@@ -795,7 +795,7 @@ struct ButtonMappingEngine {
             guard let trigger = mapping.trigger,
                   case .button = trigger.input,
                   trigger.chordButtons.contains(button),
-                  trigger.modifierFlags == modifierFlags,
+                  (trigger.modifierFlags == modifierFlags || preservesPhysicalModifiers(mapping)),
                   Set(trigger.whileHeld ?? []).isSubset(of: pressedButtons),
                   trigger.statefulButtons.isDisjoint(with: activelyCapturedButtons) else {
                 return nil
@@ -806,6 +806,21 @@ struct ButtonMappingEngine {
 
     private func recognitionPriority(of candidate: Candidate) -> Int {
         candidate.trigger.specificityScore * (mappings.count + 1) + candidate.index
+    }
+
+    /// A plain button replacement behaves like the physical target button,
+    /// including when keyboard modifiers are held. Explicit modifier mappings
+    /// still win through the normal specificity ordering.
+    private func preservesPhysicalModifiers(_ mapping: Mapping) -> Bool {
+        guard let trigger = mapping.trigger,
+              case .button(.mouse) = trigger.input,
+              trigger.modifierFlags.isEmpty,
+              trigger.statefulButtons.count == 1,
+              mapping.outcomes?.press?.behavior == .remap,
+              mapping.outcomes?.hasDeferredOutcome == false else {
+            return false
+        }
+        return true
     }
 
     private func recognitionPriority(of candidates: [Candidate]) -> Int? {

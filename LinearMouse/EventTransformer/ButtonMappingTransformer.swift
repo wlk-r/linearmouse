@@ -728,7 +728,6 @@ final class ButtonMappingTransformer: EventTransformer {
 
     private func remapMouseEvent(_ event: CGEvent, to button: CGMouseButton) {
         let view = MouseEventView(event)
-        view.modifierFlags = []
         view.mouseButton = button
     }
 

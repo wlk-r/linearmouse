@@ -2288,6 +2288,58 @@ final class ButtonMappingTransformerTests: XCTestCase {
         XCTAssertEqual(deferredEvents, [])
     }
 
+    func testMiddleRemapPreservesModifiersThroughoutDragAndRelease() throws {
+        let mapping = Mapping(
+            trigger: .init(input: .button(.mouse(4))),
+            outcomes: .init(press: .init(action: .arg0(.mouseButtonMiddle), behavior: .remap))
+        )
+        let modifierSequences: [[CGEventFlags]] = [
+            [[], [], []],
+            [.maskShift, .maskShift, .maskShift],
+            [[], .maskShift, .maskShift],
+            [.maskShift, [], []],
+            [[.maskShift, .maskControl], [.maskShift, .maskControl], []]
+        ]
+        for flags in modifierSequences {
+            let transformer = makeTransformer(mappings: [mapping], scheduler: ButtonMappingTestTimerScheduler())
+            let events = try [
+                buttonEvent(pressed: true),
+                draggedEvent(button: 4, deltaX: 12),
+                buttonEvent(pressed: false)
+            ]
+            for (index, event) in events.enumerated() {
+                event.flags = flags[index]
+                let output = try XCTUnwrap(transformer.transform(event, in: .init(device: nil)))
+                XCTAssertEqual(output.getIntegerValueField(.mouseEventButtonNumber), 2)
+                XCTAssertEqual(output.type, [.otherMouseDown, .otherMouseDragged, .otherMouseUp][index])
+                XCTAssertEqual(output.flags, flags[index])
+            }
+            let next = try XCTUnwrap(transformer.transform(mouseMovedEvent(deltaX: 1), in: .init(device: nil)))
+            XCTAssertEqual(next.type, .mouseMoved)
+        }
+    }
+
+    func testExplicitShiftRemapWinsOverPlainRemapRegardlessOfOrder() throws {
+        let plain = Mapping(
+            trigger: .init(input: .button(.mouse(4))),
+            outcomes: .init(press: .init(action: .arg0(.mouseButtonMiddle), behavior: .remap))
+        )
+        let shifted = Mapping(
+            trigger: .init(input: .button(.mouse(4)), modifiers: [.shift]),
+            outcomes: .init(press: .init(action: .arg0(.mouseButtonRight), behavior: .remap))
+        )
+        for mappings in [[plain, shifted], [shifted, plain]] {
+            let transformer = makeTransformer(mappings: mappings, scheduler: ButtonMappingTestTimerScheduler())
+            for pressed in [true, false] {
+                let event = try buttonEvent(pressed: pressed)
+                event.flags = .maskShift
+                let output = try XCTUnwrap(transformer.transform(event, in: .init(device: nil)))
+                XCTAssertEqual(output.getIntegerValueField(.mouseEventButtonNumber), 1)
+                XCTAssertEqual(output.flags, .maskShift)
+            }
+        }
+    }
+
     func testHorizontalShortcutRepeatsWithoutIdleAcrossFreshRecognitionLanes() throws {
         let scheduler = ButtonMappingTestTimerScheduler()
         let simulator = ButtonMappingTestKeySimulator()
